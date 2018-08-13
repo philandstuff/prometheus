@@ -14,6 +14,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -58,6 +59,8 @@ func main() {
 		"The rule files to check.",
 	).Required().ExistingFiles()
 
+	checkExprCmd := checkCmd.Command("expr", "Check if the PromQL expression (on stdin) looks sane.")
+
 	checkMetricsCmd := checkCmd.Command("metrics", checkMetricsUsage)
 
 	updateCmd := app.Command("update", "Update the resources to newer formats.")
@@ -100,6 +103,9 @@ func main() {
 
 	case checkRulesCmd.FullCommand():
 		os.Exit(CheckRules(*ruleFiles...))
+
+	case checkExprCmd.FullCommand():
+		os.Exit(CheckExpr())
 
 	case checkMetricsCmd.FullCommand():
 		os.Exit(CheckMetrics())
@@ -363,6 +369,29 @@ $ cat metrics.prom | promtool check metrics
 
 $ curl -s http://localhost:9090/metrics | promtool check metrics
 `)
+
+// CheckExpr performs a linting pass on input expr.
+func CheckExpr() int {
+	// read string from stdin
+	reader := bufio.NewReader(os.Stdin)
+	text, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	expr, err := promql.ParseExpr(text)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	// lint expr
+	err = promlint.CheckExpr(expr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
 
 // CheckMetrics performs a linting pass on input metrics.
 func CheckMetrics() int {
